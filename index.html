@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa de Lenguas Romances</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        
+        #map {
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .branch-card { transition: all 0.2s ease-in-out; }
+        .branch-card:hover { transform: translateY(-2px); }
+        .branch-card.active { border-left-width: 4px; background-color: #f8fafc; }
+
+        .tab-btn { transition: all 0.2s; border-bottom: 2px solid transparent; }
+        .tab-btn.active { border-bottom-color: #e11d48; color: #e11d48; font-weight: 600; }
+        
+        .quiz-option { transition: all 0.2s; border: 2px solid #e2e8f0; }
+        .quiz-option:hover:not(:disabled) { background-color: #f8fafc; border-color: #cbd5e1; }
+        .quiz-option.correct { background-color: #dcfce7; border-color: #22c55e; color: #166534; }
+        .quiz-option.incorrect { background-color: #fee2e2; border-color: #ef4444; color: #991b1b; }
+        
+        .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .word-selector { transition: all 0.2s; }
+        .word-selector.active { background-color: #e11d48; color: white; border-color: #e11d48; }
+        
+        .map-layer-btn {
+            background: white; border: 2px solid rgba(0,0,0,0.1); background-clip: padding-box;
+            transition: all 0.2s ease;
+        }
+        .map-layer-btn:hover { background-color: #f8fafc; transform: scale(1.05); }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen w-screen flex flex-col md:flex-row">
+
+    <aside class="w-full md:w-1/3 lg:w-1/4 h-[45vh] md:h-screen bg-white shadow-xl z-20 flex flex-col relative">
+        <div class="p-5 border-b border-slate-100 bg-white sticky top-0 z-10 shadow-sm">
+            <h1 class="text-2xl font-bold text-slate-900 mb-1">Lenguas Romances</h1>
+            <p class="text-xs text-slate-500 mb-4">
+                Hijas del Imperio Romano: Explora su geografía, evolución del latín y ponte a prueba.
+            </p>
+            
+            <div class="flex space-x-4 text-sm font-medium text-slate-500 border-b border-slate-200">
+                <button onclick="setMode('explore')" id="tab-explore" class="tab-btn active pb-2 px-1">Explorar</button>
+                <button onclick="setMode('cognates')" id="tab-cognates" class="tab-btn pb-2 px-1">Cognados</button>
+                <button onclick="setMode('quiz')" id="tab-quiz" class="tab-btn pb-2 px-1 flex items-center gap-1">Ejercicios</button>
+            </div>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3" id="panel-explore"></div>
+
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-4 hidden animate-fade-in" id="panel-cognates">
+            <div class="bg-rose-50 border border-rose-100 rounded-xl p-4 mb-4">
+                <h3 class="font-bold text-rose-800 mb-2">La Herencia de Roma</h3>
+                <p class="text-xs text-rose-700 mb-3">
+                    Todas estas lenguas derivan del latín vulgar. Selecciona una palabra para ver cómo evolucionó a partir de su raíz latina original en cada región.
+                </p>
+                <div class="flex flex-wrap gap-2" id="word-selectors">
+                    <button onclick="renderCognates('agua')" id="ws-agua" class="word-selector active px-3 py-1 text-xs font-semibold rounded-full border border-rose-300 text-rose-700 hover:bg-rose-100">AGUA</button>
+                    <button onclick="renderCognates('fuego')" id="ws-fuego" class="word-selector px-3 py-1 text-xs font-semibold rounded-full border border-rose-300 text-rose-700 hover:bg-rose-100">FUEGO</button>
+                    <button onclick="renderCognates('tierra')" id="ws-tierra" class="word-selector px-3 py-1 text-xs font-semibold rounded-full border border-rose-300 text-rose-700 hover:bg-rose-100">TIERRA</button>
+                    <button onclick="renderCognates('noche')" id="ws-noche" class="word-selector px-3 py-1 text-xs font-semibold rounded-full border border-rose-300 text-rose-700 hover:bg-rose-100">NOCHE</button>
+                </div>
+            </div>
+
+            <div id="latin-root-info" class="text-center py-2 mb-3">
+                <span class="text-xs text-slate-500 uppercase tracking-widest">Etimología Latina (Raíz)</span>
+                <h4 id="latin-root-word" class="text-xl font-bold text-slate-800 font-serif italic">Aqua</h4>
+            </div>
+
+            <div id="cognates-list" class="space-y-2"></div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-4 hidden animate-fade-in flex flex-col" id="panel-quiz">
+            <div id="quiz-intro" class="text-center py-8">
+                <div class="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span class="text-2xl">🏛️</span>
+                </div>
+                <h3 class="font-bold text-lg mb-2">Ponte a prueba</h3>
+                <p class="text-sm text-slate-500 mb-6">Demuestra tus conocimientos sobre la evolución del latín y las lenguas romances.</p>
+                <button onclick="startQuiz()" class="bg-rose-600 hover:bg-rose-700 text-white font-semibold py-2 px-6 rounded-lg shadow-md transition-colors">
+                    Comenzar Ejercicios
+                </button>
+            </div>
+
+            <div id="quiz-active" class="hidden flex-1 flex flex-col">
+                <div class="flex justify-between items-center mb-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    <span id="quiz-progress">Pregunta 1/10</span>
+                    <span id="quiz-score">Aciertos: 0</span>
+                </div>
+                
+                <h3 id="quiz-question" class="font-bold text-slate-800 text-lg mb-4">¿Pregunta?</h3>
+                
+                <div id="quiz-options" class="space-y-3 mb-6"></div>
+                <div id="quiz-feedback" class="hidden p-4 rounded-lg mb-4 text-sm"></div>
+
+                <div class="mt-auto">
+                    <button id="quiz-next-btn" onclick="nextQuestion()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-semibold py-3 px-4 rounded-lg shadow transition-colors hidden">
+                        Siguiente Pregunta
+                    </button>
+                </div>
+            </div>
+
+            <div id="quiz-results" class="hidden text-center py-8">
+                <div class="text-4xl mb-4">🏆</div>
+                <h3 class="font-bold text-xl mb-2">¡Completado!</h3>
+                <p class="text-slate-600 mb-6">Has acertado <span id="final-score" class="font-bold text-rose-600 text-lg"></span> preguntas.</p>
+                <button onclick="startQuiz()" class="bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold py-2 px-6 rounded-lg transition-colors">
+                    Reintentar
+                </button>
+            </div>
+        </div>
+    </aside>
+
+    <main class="w-full md:w-2/3 lg:w-3/4 h-[55vh] md:h-screen relative z-0">
+        <div id="map"></div>
+        
+        <div id="info-overlay" class="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur shadow-2xl rounded-2xl p-6 w-11/12 max-w-md z-[1000] hidden transition-opacity duration-300 border border-slate-100">
+            <button onclick="closeInfo()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+            </button>
+            <div class="flex items-center space-x-3 mb-2">
+                <div id="info-color" class="w-4 h-4 rounded-full"></div>
+                <h2 id="info-title" class="text-xl font-bold text-slate-800">Rama Romance</h2>
+            </div>
+            
+            <div id="info-curiosity" class="text-xs font-medium text-rose-700 mb-3 bg-rose-50 py-1.5 px-3 rounded-md inline-block">
+                💡 Curiosidad...
+            </div>
+
+            <p id="info-desc" class="text-sm text-slate-600 mb-4 line-clamp-3">Descripción...</p>
+            
+            <div>
+                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Lenguas principales</h3>
+                <div id="info-langs" class="flex flex-wrap gap-2"></div>
+            </div>
+        </div>
+
+        <div id="quiz-map-indicator" class="absolute top-6 left-1/2 transform -translate-x-1/2 bg-rose-600 text-white shadow-xl rounded-full px-6 py-2 z-[1000] hidden font-semibold text-sm animate-fade-in pointer-events-none">
+            Haz clic en la región correcta del mapa 🌍
+        </div>
+
+        <div class="absolute top-4 left-4 z-[1000] flex flex-col gap-2">
+            <button onclick="changeMapStyle('light')" title="Mapa Claro" class="map-layer-btn w-10 h-10 rounded-lg shadow flex items-center justify-center text-slate-700">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+            </button>
+            <button onclick="changeMapStyle('dark')" title="Mapa Oscuro" class="map-layer-btn w-10 h-10 rounded-lg shadow flex items-center justify-center text-slate-700">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+            <button onclick="changeMapStyle('satellite')" title="Mapa Satélite" class="map-layer-btn w-10 h-10 rounded-lg shadow flex items-center justify-center text-slate-700">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10zM12 2v20"/></svg>
+            </button>
+        </div>
+    </main>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <script>
+        const languagesData = [
+            {
+                id: 'ibero',
+                name: 'Ibero-Romance',
+                color: '#e11d48', // Rose
+                center: [40.0, -4.0],
+                radius: 300000,
+                description: 'Originadas en la Península Ibérica. Se expandieron masivamente hacia América, África y Asia durante la era de los descubrimientos.',
+                examples: ['Español', 'Portugués', 'Gallego', 'Asturleonés'],
+                curiosity: 'El español es hoy la segunda lengua materna más hablada del mundo, solo por detrás del chino mandarín.',
+                cognates: {
+                    agua: '🇪🇸 Español: agua<br>🇵🇹 Portugués: água<br>🟦 Gallego: auga',
+                    fuego: '🇪🇸 Español: fuego<br>🇵🇹 Portugués: fogo<br>🟦 Gallego: fogo',
+                    tierra: '🇪🇸 Español: tierra<br>🇵🇹 Portugués: terra<br>🟦 Gallego: terra',
+                    noche: '🇪🇸 Español: noche<br>🇵🇹 Portugués: noite<br>🟦 Gallego: noite'
+                }
+            },
+            {
+                id: 'occitano',
+                name: 'Occitano-Romance',
+                color: '#d97706', // Amber
+                center: [42.5, 2.0],
+                radius: 180000,
+                description: 'Forman un puente dialectal entre la Península Ibérica y Francia, englobando las lenguas habladas en el este de España, Andorra y el sur de Francia.',
+                examples: ['Catalán', 'Occitano', 'Aragonés'],
+                curiosity: 'El occitano fue la célebre lengua literaria de los trovadores durante la Edad Media en toda Europa.',
+                cognates: {
+                    agua: '🟨 Catalán: aigua<br>🟨 Occitano: aiga',
+                    fuego: '🟨 Catalán: foc<br>🟨 Occitano: fuòc',
+                    tierra: '🟨 Catalán: terra<br>🟨 Occitano: tèrra',
+                    noche: '🟨 Catalán: nit<br>🟨 Occitano: nuèch'
+                }
+            },
+            {
+                id: 'galo',
+                name: 'Galo-Romance',
+                color: '#2563eb', // Blue
+                center: [47.0, 2.5],
+                radius: 280000,
+                description: 'Habladas principalmente en el centro y norte de Francia, así como en Bélgica y Suiza romanda. Fueron fuertemente influenciadas por sustratos celtas y superestratos germánicos (francos).',
+                examples: ['Francés', 'Valón', 'Picardo'],
+                curiosity: 'Su pronunciación y ortografía se alejaron drásticamente del latín debido a la gran influencia germánica en la Galia.',
+                cognates: {
+                    agua: '🇫🇷 Francés: eau<br>🇧🇪 Valón: aiwe',
+                    fuego: '🇫🇷 Francés: feu<br>🇧🇪 Valón: feu',
+                    tierra: '🇫🇷 Francés: terre<br>🇧🇪 Valón: tere',
+                    noche: '🇫🇷 Francés: nuit<br>🇧🇪 Valón: nute'
+                }
+            },
+            {
+                id: 'italo',
+                name: 'Italo-Romance',
+                color: '#16a34a', // Green
+                center: [42.0, 12.5],
+                radius: 320000,
+                description: 'El conjunto de lenguas romances de la península itálica y Sicilia. Geográficamente son las que se desarrollaron más cerca del corazón del Imperio Romano.',
+                examples: ['Italiano', 'Napolitano', 'Siciliano'],
+                curiosity: 'El italiano estándar moderno no es una mezcla de todos los dialectos, sino que se basa casi íntegramente en el dialecto toscano de Florencia.',
+                cognates: {
+                    agua: '🇮🇹 Italiano: acqua<br>🌋 Siciliano: acqua',
+                    fuego: '🇮🇹 Italiano: fuoco<br>🌋 Siciliano: focu',
+                    tierra: '🇮🇹 Italiano: terra<br>🌋 Siciliano: terra',
+                    noche: '🇮🇹 Italiano: notte<br>🌋 Siciliano: notti'
+                }
+            },
+            {
+                id: 'reto',
+                name: 'Reto-Romance',
+                color: '#9333ea', // Purple
+                center: [46.5, 9.5],
+                radius: 100000,
+                description: 'Un grupo de lenguas minoritarias refugiadas en los valles de la cordillera de los Alpes, entre Suiza y el norte de Italia.',
+                examples: ['Romanche', 'Friulano', 'Ladino'],
+                curiosity: 'El romanche es una de las cuatro lenguas nacionales de Suiza, aunque es hablado por menos de 50.000 personas.',
+                cognates: {
+                    agua: '🇨🇭 Romanche: aua<br>🏔️ Friulano: aghe',
+                    fuego: '🇨🇭 Romanche: fieu<br>🏔️ Friulano: fûc',
+                    tierra: '🇨🇭 Romanche: terra<br>🏔️ Friulano: tiere',
+                    noche: '🇨🇭 Romanche: notg<br>🏔️ Friulano: gnot'
+                }
+            },
+            {
+                id: 'balcano',
+                name: 'Balcano-Romance',
+                color: '#be123c', // Rose Dark
+                center: [46.0, 25.0],
+                radius: 250000,
+                description: 'Representa el legado del latín en la provincia romana de Dacia, aislada del resto del mundo romance durante siglos y rodeada de lenguas eslavas.',
+                examples: ['Rumano', 'Aromúnico'],
+                curiosity: 'El rumano es la única lengua romance mayoritaria que aún conserva los casos gramaticales de los sustantivos latinos (nominativo/acusativo, genitivo/dativo).',
+                cognates: {
+                    agua: '🇷🇴 Rumano: apă',
+                    fuego: '🇷🇴 Rumano: foc',
+                    tierra: '🇷🇴 Rumano: țară',
+                    noche: '🇷🇴 Rumano: noapte'
+                }
+            },
+            {
+                id: 'sardo',
+                name: 'Sardo',
+                color: '#0ea5e9', // Sky
+                center: [40.0, 9.0],
+                radius: 90000,
+                description: 'El sardo constituye una rama propia y aislada dentro de la familia romance, originada en la isla de Cerdeña.',
+                examples: ['Sardo Campidanés', 'Sardo Logudorés'],
+                curiosity: 'Es unánimemente considerada la lengua romance viva más conservadora. Por ejemplo, aún pronuncia la C y la G fuertes latinas ante E e I (como en "kentu" para cien).',
+                cognates: {
+                    agua: '🏝️ Sardo: abba / akua',
+                    fuego: '🏝️ Sardo: fogu',
+                    tierra: '🏝️ Sardo: terra',
+                    noche: '🏝️ Sardo: noti'
+                }
+            }
+        ];
+
+        const latinRoots = {
+            agua: 'Aqua',
+            fuego: 'Focus (en latín clásico significaba hogar/chimenea, sustituyó a "ignis")',
+            tierra: 'Terra',
+            noche: 'Nox / Noctem'
+        };
+
+        const exercisesData = [
+            {
+                type: 'multiple-choice',
+                question: '¿De qué idioma exacto de la Antigüedad evolucionaron TODAS las lenguas romances?',
+                options: ['El Latín Clásico', 'El Latín Vulgar', 'El Griego Antiguo', 'El Protoindoeuropeo'],
+                correctIndex: 1,
+                explanation: '¡Correcto! Las lenguas romances no provienen del latín literario (clásico), sino del latín vulgar hablado por soldados, campesinos y comerciantes en el Imperio.'
+            },
+            {
+                type: 'map-click',
+                question: 'Localiza en el mapa la región de las lenguas <b>Ibero-Romances</b> (Español, Portugués...).',
+                targetId: 'ibero',
+                explanation: '¡Bien hecho! La Península Ibérica fue el lugar de origen del español, portugués, gallego y otros.'
+            },
+            {
+                type: 'multiple-choice',
+                question: '¿Cuál de estos idiomas es considerado por los lingüistas como la lengua romance más conservadora (la más parecida al latín)?',
+                options: ['El Italiano', 'El Español', 'El Rumano', 'El Sardo'],
+                correctIndex: 3,
+                explanation: '¡Exacto! El Sardo, aislado en la isla de Cerdeña, conservó vocales y consonantes que otras lenguas perdieron.'
+            },
+            {
+                type: 'map-click',
+                question: 'Encuentra en el mapa la rama que incluye la lengua histórica de los famosos trovadores medievales.',
+                targetId: 'occitano',
+                explanation: '¡Correcto! El occitano fue el gran idioma de la literatura cortesana y poética en la Edad Media.'
+            },
+            {
+                type: 'multiple-choice',
+                question: '¿Qué idioma romance destaca hoy en día por seguir usando "casos gramaticales" para declinar sustantivos, al igual que el latín?',
+                options: ['El Francés', 'El Rumano', 'El Catalán', 'El Portugués'],
+                correctIndex: 1,
+                explanation: '¡Eso es! El rumano, debido a su aislamiento en los Balcanes, retuvo esta compleja estructura gramatical latina.'
+            },
+            {
+                type: 'map-click',
+                question: 'Haz clic en la región geográfica donde se hablan lenguas refugiadas en las montañas como el <b>Romanche</b>.',
+                targetId: 'reto',
+                explanation: '¡Correcto! Las lenguas Reto-Romances sobrevivieron en los aislados y altos valles de los Alpes.'
+            },
+            {
+                type: 'multiple-choice',
+                question: '¿Cuál de estos idiomas geográficamente cercanos <b>NO</b> es una lengua romance? (¡Pregunta trampa!)',
+                options: ['El Vasco (Euskera)', 'El Gallego', 'El Valón', 'El Aragonés'],
+                correctIndex: 0,
+                explanation: '¡Perfecto! El euskera no es romance; de hecho, existía en la Península Ibérica mucho antes de que llegaran los romanos con el latín.'
+            },
+            {
+                type: 'map-click',
+                question: 'Localiza la rama romance que más se alejó de la pronunciación latina original debido al fuerte contacto con tribus germánicas.',
+                targetId: 'galo',
+                explanation: '¡Genial! Las lenguas Galo-Romances (como el francés) sufrieron grandes cambios fonéticos influenciadas por los francos.'
+            },
+            {
+                type: 'multiple-choice',
+                question: '¿El idioma italiano estándar actual en qué dialecto histórico está basado mayoritariamente?',
+                options: ['En el dialecto Romano', 'En el dialecto Siciliano', 'En el dialecto Florentino (Toscano)', 'En el dialecto Veneciano'],
+                correctIndex: 2,
+                explanation: '¡Correcto! El toscano de Florencia se convirtió en la norma nacional gracias al prestigio de escritores como Dante, Petrarca y Boccaccio.'
+            },
+            {
+                type: 'multiple-choice',
+                question: 'En los cognados que hemos visto, ¿de qué palabra latina derivan el español "fuego" y el francés "feu"?',
+                options: ['Ignis', 'Flamen', 'Focus', 'Pyros'],
+                correctIndex: 2,
+                explanation: '¡Así es! "Focus" significaba originalmente hogar/hoguera familiar en latín, y en el habla vulgar reemplazó a la palabra clásica "ignis".'
+            }
+        ];
+
+        let map;
+        let mapLayer;
+        let circles = {};
+        let currentMode = 'explore';
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let isWaitingForMapClick = false;
+
+        const tileLayers = {
+            light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+            dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+            satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+        };
+
+        function initApp() {
+            map = L.map('map', { zoomControl: false }).setView([42, 10], 5);
+            L.control.zoom({ position: 'topright' }).addTo(map);
+
+            mapLayer = L.tileLayer(tileLayers.light, {
+                attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+                subdomains: 'abcd',
+                maxZoom: 10,
+                minZoom: 3
+            }).addTo(map);
+
+            const sidebarList = document.getElementById('panel-explore');
+
+            languagesData.forEach(branch => {
+                const circle = L.circle(branch.center, {
+                    color: branch.color,
+                    fillColor: branch.color,
+                    fillOpacity: 0.35,
+                    weight: 2,
+                    radius: branch.radius
+                }).addTo(map);
+
+                circle.bindTooltip(`<span class="font-semibold">${branch.name}</span>`, {
+                    className: 'bg-white border-0 shadow-md text-slate-800 rounded px-3 py-1',
+                    direction: 'top'
+                });
+
+                circle.on('click', () => handleMapClick(branch.id));
+                circles[branch.id] = circle;
+
+                const item = document.createElement('div');
+                item.className = `branch-card p-4 bg-white border border-slate-100 rounded-xl shadow-sm cursor-pointer border-l-4`;
+                item.style.borderLeftColor = 'transparent';
+                item.id = `card-${branch.id}`;
+                item.innerHTML = `
+                    <div class="flex items-center space-x-3 mb-1">
+                        <div class="w-3 h-3 rounded-full" style="background-color: ${branch.color}"></div>
+                        <h3 class="font-semibold text-slate-800 text-lg">${branch.name}</h3>
+                    </div>
+                    <p class="text-xs text-slate-500 line-clamp-2">${branch.description}</p>
+                `;
+                item.addEventListener('click', () => {
+                    if(currentMode === 'explore') selectBranch(branch.id);
+                });
+                sidebarList.appendChild(item);
+            });
+            
+            renderCognates('agua');
+            if (window.innerWidth <= 768) map.setView([40, 5], 4);
+        }
+
+        function changeMapStyle(style) {
+            map.removeLayer(mapLayer);
+            mapLayer = L.tileLayer(tileLayers[style], {
+                attribution: style === 'satellite' ? '&copy; Esri' : '&copy; OpenStreetMap & CARTO',
+                maxZoom: 10,
+                minZoom: 3
+            }).addTo(map);
+        }
+
+        function renderCognates(wordId) {
+            document.querySelectorAll('.word-selector').forEach(btn => {
+                btn.classList.remove('active', 'bg-rose-600', 'text-white');
+                btn.classList.add('text-rose-700', 'hover:bg-rose-100');
+            });
+            const activeBtn = document.getElementById(`ws-${wordId}`);
+            activeBtn.classList.add('active', 'bg-rose-600', 'text-white');
+            activeBtn.classList.remove('text-rose-700', 'hover:bg-rose-100');
+
+            document.getElementById('latin-root-word').innerText = latinRoots[wordId];
+
+            const cognatesList = document.getElementById('cognates-list');
+            cognatesList.innerHTML = '';
+            
+            languagesData.forEach(branch => {
+                const cogItem = document.createElement('div');
+                cogItem.className = 'p-3 bg-white border border-slate-100 rounded-lg shadow-sm flex flex-col animate-fade-in';
+                cogItem.innerHTML = `
+                    <div class="flex items-center space-x-2 mb-2 border-b border-slate-100 pb-1">
+                        <div class="w-2 h-2 rounded-full" style="background-color: ${branch.color}"></div>
+                        <span class="text-xs font-bold text-slate-500 uppercase">${branch.name}</span>
+                    </div>
+                    <div class="text-sm text-slate-800 leading-relaxed font-medium ml-4">
+                        ${branch.cognates[wordId]}
+                    </div>
+                `;
+                cognatesList.appendChild(cogItem);
+            });
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            isWaitingForMapClick = false;
+            
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`tab-${mode}`).classList.add('active');
+
+            document.getElementById('panel-explore').classList.add('hidden');
+            document.getElementById('panel-cognates').classList.add('hidden');
+            document.getElementById('panel-quiz').classList.add('hidden');
+            
+            closeInfo();
+            document.getElementById('quiz-map-indicator').classList.add('hidden');
+            document.getElementById(`panel-${mode}`).classList.remove('hidden');
+
+            if (mode === 'quiz') {
+                document.getElementById('quiz-intro').classList.remove('hidden');
+                document.getElementById('quiz-active').classList.add('hidden');
+                document.getElementById('quiz-results').classList.add('hidden');
+            }
+        }
+
+        function handleMapClick(branchId) {
+            if (currentMode === 'explore') {
+                selectBranch(branchId);
+            } else if (currentMode === 'quiz' && isWaitingForMapClick) {
+                checkMapAnswer(branchId);
+            }
+        }
+
+        function selectBranch(id) {
+            const branch = languagesData.find(b => b.id === id);
+            if (!branch) return;
+
+            document.querySelectorAll('.branch-card').forEach(el => {
+                el.classList.remove('active', 'shadow-md');
+                el.classList.add('shadow-sm');
+                el.style.borderLeftColor = 'transparent';
+            });
+
+            const activeCard = document.getElementById(`card-${id}`);
+            if (activeCard) {
+                activeCard.classList.add('active', 'shadow-md');
+                activeCard.classList.remove('shadow-sm');
+                activeCard.style.borderLeftColor = branch.color;
+                activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+
+            map.flyTo(branch.center, 6, { animate: true, duration: 1.5 });
+
+            Object.values(circles).forEach(c => c.setStyle({ fillOpacity: 0.1, weight: 1 }));
+            circles[id].setStyle({ fillOpacity: 0.6, weight: 3 });
+            circles[id].bringToFront();
+
+            document.getElementById('info-title').innerText = branch.name;
+            document.getElementById('info-curiosity').innerText = `💡 ${branch.curiosity}`;
+            document.getElementById('info-desc').innerText = branch.description;
+            document.getElementById('info-color').style.backgroundColor = branch.color;
+            
+            const langsContainer = document.getElementById('info-langs');
+            langsContainer.innerHTML = '';
+            branch.examples.forEach(lang => {
+                const badge = document.createElement('span');
+                badge.className = 'px-2.5 py-1 rounded-md text-xs font-medium text-slate-700 bg-slate-100 border border-slate-200';
+                badge.innerText = lang;
+                langsContainer.appendChild(badge);
+            });
+
+            document.getElementById('info-overlay').classList.remove('hidden');
+        }
+
+        function closeInfo() {
+            document.getElementById('info-overlay').classList.add('hidden');
+            Object.values(circles).forEach(c => c.setStyle({ fillOpacity: 0.35, weight: 2 }));
+            document.querySelectorAll('.branch-card').forEach(el => {
+                el.classList.remove('active', 'shadow-md');
+                el.classList.add('shadow-sm');
+                el.style.borderLeftColor = 'transparent';
+            });
+            if (currentMode === 'explore') {
+                if (window.innerWidth > 768) map.flyTo([42, 10], 5, { duration: 1.5 });
+                else map.flyTo([40, 5], 4, { duration: 1.5 });
+            }
+        }
+
+        function startQuiz() {
+            currentQuestionIndex = 0;
+            score = 0;
+            document.getElementById('quiz-intro').classList.add('hidden');
+            document.getElementById('quiz-results').classList.add('hidden');
+            document.getElementById('quiz-active').classList.remove('hidden');
+            
+            if (window.innerWidth > 768) map.flyTo([42, 10], 5, { duration: 1 });
+            else map.flyTo([40, 5], 4, { duration: 1 });
+
+            loadQuestion();
+        }
+
+        function loadQuestion() {
+            const q = exercisesData[currentQuestionIndex];
+            document.getElementById('quiz-progress').innerText = `Pregunta ${currentQuestionIndex + 1} / ${exercisesData.length}`;
+            document.getElementById('quiz-score').innerText = `Aciertos: ${score}`;
+            document.getElementById('quiz-question').innerHTML = q.question;
+            
+            const optionsContainer = document.getElementById('quiz-options');
+            optionsContainer.innerHTML = '';
+            
+            const feedback = document.getElementById('quiz-feedback');
+            feedback.classList.add('hidden');
+            feedback.className = 'hidden p-4 rounded-lg mb-4 text-sm';
+            
+            document.getElementById('quiz-next-btn').classList.add('hidden');
+
+            if (q.type === 'multiple-choice') {
+                isWaitingForMapClick = false;
+                document.getElementById('quiz-map-indicator').classList.add('hidden');
+                
+                q.options.forEach((opt, index) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'quiz-option w-full text-left px-4 py-3 rounded-lg font-medium text-slate-700 bg-white shadow-sm';
+                    btn.innerText = opt;
+                    btn.onclick = () => checkMultipleChoice(index, btn);
+                    optionsContainer.appendChild(btn);
+                });
+            } else if (q.type === 'map-click') {
+                isWaitingForMapClick = true;
+                document.getElementById('quiz-map-indicator').classList.remove('hidden');
+                document.getElementById('quiz-map-indicator').innerText = "Haz clic en la región correcta del mapa 🌍";
+                optionsContainer.innerHTML = '<div class="text-center p-6 border-2 border-dashed border-rose-300 rounded-xl bg-rose-50 text-rose-700 font-medium animate-pulse">👆 Interactúa con el mapa a tu derecha (o abajo) para responder.</div>';
+                
+                Object.values(circles).forEach(c => {
+                    c.setStyle({ className: 'cursor-pointer hover:fill-rose-500' });
+                });
+            }
+        }
+
+        function checkMultipleChoice(selectedIndex, buttonElement) {
+            const q = exercisesData[currentQuestionIndex];
+            const buttons = document.querySelectorAll('.quiz-option');
+            buttons.forEach(btn => btn.disabled = true);
+
+            if (selectedIndex === q.correctIndex) {
+                buttonElement.classList.add('correct');
+                score++;
+                showFeedback(true, q.explanation);
+            } else {
+                buttonElement.classList.add('incorrect');
+                buttons[q.correctIndex].classList.add('correct');
+                showFeedback(false, q.explanation);
+            }
+            
+            document.getElementById('quiz-score').innerText = `Aciertos: ${score}`;
+            document.getElementById('quiz-next-btn').classList.remove('hidden');
+        }
+
+        function checkMapAnswer(branchId) {
+            const q = exercisesData[currentQuestionIndex];
+            isWaitingForMapClick = false;
+            document.getElementById('quiz-map-indicator').classList.add('hidden');
+            
+            const isCorrect = branchId === q.targetId;
+            
+            Object.values(circles).forEach(c => c.setStyle({ fillOpacity: 0.1 }));
+            circles[branchId].setStyle({ fillOpacity: 0.8, weight: 4, color: isCorrect ? '#22c55e' : '#ef4444' });
+            
+            if (isCorrect) {
+                score++;
+                showFeedback(true, q.explanation);
+            } else {
+                showFeedback(false, `No es correcto. Esa es la región de las lenguas ${languagesData.find(b=>b.id===branchId).name}. ` + q.explanation);
+                circles[q.targetId].setStyle({ fillOpacity: 0.8, weight: 4, color: '#22c55e' });
+                map.flyTo(languagesData.find(b=>b.id===q.targetId).center, 6, { duration: 1 });
+            }
+
+            document.getElementById('quiz-score').innerText = `Aciertos: ${score}`;
+            document.getElementById('quiz-next-btn').classList.remove('hidden');
+            document.getElementById('quiz-options').innerHTML = '';
+        }
+
+        function showFeedback(isCorrect, text) {
+            const feedback = document.getElementById('quiz-feedback');
+            feedback.classList.remove('hidden');
+            if (isCorrect) {
+                feedback.classList.add('bg-green-100', 'text-green-800', 'border', 'border-green-200');
+                feedback.innerHTML = `<strong>¡Correcto!</strong> <br> ${text}`;
+            } else {
+                feedback.classList.add('bg-red-100', 'text-red-800', 'border', 'border-red-200');
+                feedback.innerHTML = `<strong>Incorrecto.</strong> <br> ${text}`;
+            }
+        }
+
+        function nextQuestion() {
+            languagesData.forEach(branch => {
+                circles[branch.id].setStyle({ color: branch.color, fillColor: branch.color, fillOpacity: 0.35, weight: 2 });
+            });
+
+            currentQuestionIndex++;
+            if (currentQuestionIndex < exercisesData.length) {
+                loadQuestion();
+            } else {
+                showResults();
+            }
+        }
+
+        function showResults() {
+            document.getElementById('quiz-active').classList.add('hidden');
+            document.getElementById('quiz-results').classList.remove('hidden');
+            document.getElementById('final-score').innerText = `${score} de ${exercisesData.length}`;
+            if (window.innerWidth > 768) map.flyTo([42, 10], 5);
+        }
+
+        window.onload = initApp;
+    </script>
+</body>
+</html>
